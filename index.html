@@ -77,7 +77,7 @@
 
   .toolbar {
     display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: end; justify-content: space-between;
-    margin: 3.5rem 0 0; padding-bottom: 1rem; border-bottom: 2px solid var(--ink);
+    margin: 2.5rem 0 0; padding-bottom: .75rem; border-bottom: 2px solid var(--ink);
   }
   .count { font-size: 1.25rem; font-weight: 600; margin: 0; }
   .count span { color: var(--muted); font-weight: 400; }
@@ -87,26 +87,38 @@
 
   ul.sites { list-style: none; margin: 0; padding: 0; }
   li.site {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem 2rem;
-    align-items: center; padding: 1.6rem 0; border-bottom: 1px solid var(--line);
+    display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; gap: 0 .9rem;
+    align-items: center; padding: .7rem 0; border-bottom: 1px solid var(--line);
   }
+  .fav {
+    width: 2rem; height: 2rem; border-radius: .45rem; overflow: hidden;
+    display: grid; place-items: center; flex: none;
+    background: var(--surface); border: 1px solid var(--line);
+    font-weight: 700; font-size: .95rem; color: var(--muted); text-transform: uppercase;
+  }
+  .fav img { width: 1.25rem; height: 1.25rem; object-fit: contain; display: block; }
+  .info { min-width: 0; }
   .addr {
-    font-size: clamp(1.35rem, 3.4vw, 2.1rem); font-weight: 650; font-stretch: 85%;
-    letter-spacing: -.01em; line-height: 1.15; margin: 0;
-    overflow-wrap: anywhere;
+    font-size: 1.125rem; font-weight: 650; font-stretch: 88%;
+    letter-spacing: -.005em; line-height: 1.25; margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .addr a { color: var(--ink); text-decoration: none; }
-  .addr a:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .addr a:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
   .addr .host { color: var(--muted); font-weight: 400; }
-  .desc { margin: .4rem 0 0; color: var(--ink); max-width: 62ch; }
-  .meta { margin: .45rem 0 0; color: var(--muted); font-size: .875rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
-  .badge { border: 1px solid var(--line); border-radius: 999px; padding: 0 .55rem; }
+  .meta {
+    margin: .1rem 0 0; color: var(--muted); font-size: .8125rem;
+    display: flex; gap: .9rem; white-space: nowrap; overflow: hidden;
+  }
+  .meta .desc { color: var(--ink); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  .meta span:not(.desc) { flex: none; }
+  .badge { border: 1px solid var(--line); border-radius: 999px; padding: 0 .45rem; line-height: 1.35; }
 
-  .actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
+  .actions { display: flex; gap: .4rem; justify-content: flex-end; }
   .btn {
-    display: inline-flex; align-items: center; gap: .45rem;
-    font-weight: 600; font-size: .9375rem; text-decoration: none;
-    border-radius: .5rem; padding: .55rem .95rem; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-weight: 600; font-size: .875rem; text-decoration: none;
+    border-radius: .45rem; padding: .4rem .75rem; white-space: nowrap;
   }
   .btn svg { width: 1rem; height: 1rem; flex: none; }
   .btn.site-btn { background: var(--accent); color: var(--accent-ink); }
@@ -120,8 +132,9 @@
   @media (max-width: 760px) {
     .wrap { padding-top: 2rem; }
     form { grid-template-columns: 1fr; }
-    li.site { grid-template-columns: 1fr; }
-    .actions { justify-content: flex-start; }
+    li.site { grid-template-columns: 2rem minmax(0, 1fr); row-gap: .5rem; align-items: start; }
+    .actions { grid-column: 2; justify-content: flex-start; }
+    .meta .desc { display: none; }
     .controls, .controls input { width: 100%; }
     .controls select { flex: 1; }
   }
@@ -256,6 +269,56 @@
     return `<span class="host">${esc(clean.slice(0, slash))}</span>${esc(clean.slice(slash))}`;
   }
 
+  function favInner(r) {
+    if (r._icon) return `<img src="${esc(r._icon)}" alt="" loading="lazy" decoding="async">`;
+    return esc((r.name.replace(/[^a-z0-9]/gi, "")[0] || "?"));
+  }
+
+  function canLoad(src) {
+    return new Promise((ok) => {
+      const img = new Image();
+      const t = setTimeout(() => ok(false), 6000);
+      img.onload = () => { clearTimeout(t); ok(img.naturalWidth > 0); };
+      img.onerror = () => { clearTimeout(t); ok(false); };
+      img.src = src;
+    });
+  }
+
+  async function findIcon(r) {
+    const candidates = [];
+    try {
+      const res = await fetch(r._url, { mode: "cors" });
+      if (res.ok) {
+        const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+        const base = new URL(doc.querySelector("base[href]")?.getAttribute("href") || res.url || r._url, res.url || r._url);
+        const links = [...doc.querySelectorAll('link[rel][href]')].filter((l) => /(^|\s)(icon|apple-touch-icon)(\s|$)/i.test(l.rel));
+        links.sort((a, b) => (/apple/i.test(a.rel) ? 1 : 0) - (/apple/i.test(b.rel) ? 1 : 0));
+        for (const l of links) { try { candidates.push(new URL(l.getAttribute("href"), base).href); } catch {} }
+      }
+    } catch {}
+    try { candidates.push(new URL("favicon.ico", r._url).href); } catch {}
+    for (const c of candidates) if (await canLoad(c)) return c;
+    return null;
+  }
+
+  function loadIcons(repos) {
+    const queue = repos.filter((r) => r._icon === undefined);
+    let i = 0;
+    const worker = async () => {
+      while (i < queue.length) {
+        const r = queue[i++];
+        r._icon = null;
+        const icon = await findIcon(r);
+        if (icon) {
+          r._icon = icon;
+          const el = document.querySelector(`[data-fav="${r.id}"]`);
+          if (el) el.innerHTML = favInner(r);
+        }
+      }
+    };
+    for (let w = 0; w < 6; w++) worker();
+  }
+
   function renderState(title, text, isError) {
     out.innerHTML = `<div class="state${isError ? " error" : ""}"><strong>${esc(title)}</strong>${esc(text)}</div>`;
   }
@@ -288,13 +351,13 @@
     } else {
       body = `<ul class="sites">${list.map((r) => `
         <li class="site">
-          <div>
-            <h2 class="addr"><a href="${esc(r._url)}" target="_blank" rel="noopener noreferrer">${addrHtml(r._url)}</a></h2>
-            ${r.description ? `<p class="desc">${esc(r.description)}</p>` : ""}
+          <span class="fav" data-fav="${r.id}" aria-hidden="true">${favInner(r)}</span>
+          <div class="info">
+            <h2 class="addr"><a href="${esc(r._url)}" target="_blank" rel="noopener noreferrer" title="${esc(r._url)}">${addrHtml(r._url)}</a></h2>
             <p class="meta">
-              <span>${esc(r.name)}</span>
+              ${r.description ? `<span class="desc" title="${esc(r.description)}">${esc(r.description)}</span>` : ""}
               ${r.language ? `<span>${esc(r.language)}</span>` : ""}
-              <span>Atualizado em ${fmtDate(r.pushed_at)}</span>
+              <span>${fmtDate(r.pushed_at)}</span>
               ${r.private ? `<span class="badge">Privado</span>` : ""}
               ${r.fork ? `<span class="badge">Fork</span>` : ""}
             </p>
@@ -325,6 +388,7 @@
       sites = await load(username, token);
       query = "";
       render();
+      loadIcons(sites);
     } catch (err) {
       const [t, m] = errorMessage(err, username);
       renderState(t, m, true);
