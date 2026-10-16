@@ -297,7 +297,7 @@
         for (const l of links) { try { candidates.push(new URL(l.getAttribute("href"), base).href); } catch {} }
       }
     } catch {}
-    try { candidates.push(new URL("favicon.ico", r._url).href); } catch {}
+    try { candidates.push(new URL("icon.png", r._url).href); } catch {}
     for (const c of candidates) if (await canLoad(c)) return c;
     return null;
   }
